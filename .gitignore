@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+
+# Database
+economy.db
+
+# Dynamic JSON logs and state files
+admin_logs.json
+linked_users.json
+requests_logs.json
+tracked_tx.json
