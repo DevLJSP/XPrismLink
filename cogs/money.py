@@ -1,7 +1,7 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-from database import get_balance, update_balance, get_top_stats # Importing from our database file
+from database import get_balance, update_balance, get_top_stats
 from cogs.linker import is_linked
 
 class Money(commands.Cog):
@@ -15,9 +15,9 @@ class Money(commands.Cog):
         
         if not is_linked(target_user.id):
             if target_user == interaction.user:
-                await interaction.response.send_message("❌ | You must link your Rugplay account first! Use `/link`.", ephemeral=True)
+                await interaction.response.send_message("❌ | You must link your Prism account first! Use `/link`.", ephemeral=True)
             else:
-                await interaction.response.send_message(f"❌ | **{target_user.name}** hasn't linked their Rugplay account yet.", ephemeral=True)
+                await interaction.response.send_message(f"❌ | **{target_user.name}** hasn't linked their Prism account yet.", ephemeral=True)
             return
             
         bal = await get_balance(target_user.id)
@@ -25,7 +25,7 @@ class Money(commands.Cog):
         embed = discord.Embed(title="💰 Wallet Balance", color=discord.Color.gold())
         embed.add_field(name="User", value=target_user.mention, inline=True)
         embed.add_field(name="Balance", value=f"**${bal}**", inline=True)
-        embed.set_footer(text="To deposit, send money to crackhead on Rugplay.")
+        embed.set_footer(text="To deposit, send money to brazil on XPrism.")
         
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -58,16 +58,14 @@ class Money(commands.Cog):
         for i, (user_id, value) in enumerate(top_users):
             medal = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else f"`#{i+1}`"
             
-            # Prefer Rugplay Username, fallback to Discord user
             link_data = linked_users.get(str(user_id), {})
-            rp_username = link_data.get("rugplay_username")
+            rp_username = link_data.get("prism_username")
             if rp_username:
                 username = rp_username
             else:
                 user = self.bot.get_user(user_id)
                 username = user.name if user else f"Unknown ({user_id})"
             
-            # Format value depending on what type of stat it is
             if target_stat in ["balance", "total_wagered", "total_won", "total_lost"]:
                 formatted_val = f"${value:,}"
             else:
@@ -76,7 +74,7 @@ class Money(commands.Cog):
             description += f"{medal} **{username}** - {formatted_val}\n"
             
         embed.description = description
-        embed.set_footer(text="To deposit, send money to crackhead on Rugplay.")
+        embed.set_footer(text="To deposit, send money to brazil on XPrism.")
         
         await interaction.response.send_message(embed=embed, ephemeral=False)
 

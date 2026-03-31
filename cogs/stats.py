@@ -15,9 +15,9 @@ class Stats(commands.Cog):
         
         if not is_linked(target.id):
             if target == interaction.user:
-                await interaction.response.send_message("❌ | You must link your Rugplay account first! Use `/link`.", ephemeral=True)
+                await interaction.response.send_message("❌ | You must link your Prism account first! Use `/link`.", ephemeral=True)
             else:
-                await interaction.response.send_message(f"❌ | **{target.name}** hasn't linked their Rugplay account yet.", ephemeral=True)
+                await interaction.response.send_message(f"❌ | **{target.name}** hasn't linked their Prism account yet.", ephemeral=True)
             return
         
         s = await get_user_stats(target.id)
@@ -31,16 +31,15 @@ class Stats(commands.Cog):
         net_str = f"+${net:,}" if net >= 0 else f"-${abs(net):,}"
         net_color = discord.Color.green() if net >= 0 else discord.Color.red()
         
-        # Get linked username
         linked = get_linked_users()
-        rp_user = linked.get(str(target.id), {}).get("rugplay_username", "Unknown")
+        rp_user = linked.get(str(target.id), {}).get("prism_username", "Unknown")
         
         embed = discord.Embed(
             title=f"📊 Stats for {target.display_name}",
             color=net_color
         )
         embed.set_thumbnail(url=target.display_avatar.url)
-        embed.add_field(name="Rugplay", value=f"`{rp_user}`", inline=True)
+        embed.add_field(name="Prism", value=f"`{rp_user}`", inline=True)
         embed.add_field(name="\u200b", value="\u200b", inline=True)
         embed.add_field(name="Net P/L", value=f"**{net_str}**", inline=True)
         

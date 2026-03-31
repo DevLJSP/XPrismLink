@@ -34,7 +34,6 @@ async def init_db():
                 games_lost INTEGER DEFAULT 0
             )
         """)
-        # Ensure the single casino_stats row exists
         await db.execute("""
             INSERT OR IGNORE INTO casino_stats (id) VALUES (1)
         """)
@@ -59,6 +58,18 @@ async def init_db():
             )
         """)
         await db.execute("INSERT OR IGNORE INTO lotteries (id, is_active) VALUES (1, 0)")
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS cashout_requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                prism_username TEXT NOT NULL,
+                amount INTEGER NOT NULL,
+                status TEXT DEFAULT 'pending',
+                message_id INTEGER DEFAULT NULL,
+                channel_id INTEGER DEFAULT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         await db.commit()
 
 async def get_balance(user_id):
@@ -74,13 +85,12 @@ async def get_balance(user_id):
 
 async def update_balance(user_id, amount):
     async with aiosqlite.connect(DB_NAME, timeout=20.0) as db:
-        await get_balance(user_id) # Ensure user exists
+        await get_balance(user_id)
         await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, user_id))
         await db.commit()
 
 async def set_balance(user_id, amount):
     async with aiosqlite.connect(DB_NAME, timeout=20.0) as db:
-        # Ensure user exists first
         await get_balance(user_id)
         await db.execute("UPDATE users SET balance = ? WHERE user_id = ?", (amount, user_id))
         await db.commit()
@@ -119,7 +129,7 @@ async def process_bet(interaction: discord.Interaction, amount: int) -> bool:
     from cogs.linker import is_linked
     user_id = interaction.user.id
     if not is_linked(user_id):
-        msg = "❌ | You must link your Rugplay account first! Use `/link`."
+        msg = "❌ | You must link your Prism account first! Use `/link`."
         if interaction.response.is_done():
             await interaction.followup.send(msg, ephemeral=True)
         else:
@@ -155,8 +165,8 @@ async def process_bet(interaction: discord.Interaction, amount: int) -> bool:
             await db.rollback()
             deposit_msg = (
                 f"❌ | You only have **${current_bal}**!"
-                f"\n\n💰 To deposit, send money to **crackhead** on Rugplay:"
-                f"\nhttps://rugplay.com/user/crackhead"
+                f"\n\n💰 To deposit, send money to **brazil** on XPrism:"
+                f"\nhttps://xprismplay.dpdns.org/user/brazil"
             )
             if interaction.response.is_done():
                 await interaction.followup.send(deposit_msg, ephemeral=True)
@@ -171,18 +181,10 @@ async def process_bet(interaction: discord.Interaction, amount: int) -> bool:
 # ─── Stats Functions ───
 
 async def record_game(user_id, wagered, net_result, won: bool):
-    """
-    Record a game outcome for both user and casino stats.
-    wagered: the amount the user bet
-    net_result: positive = user profit, negative = user loss (amount lost)
-    won: True if user won, False if user lost
-    """
     async with aiosqlite.connect(DB_NAME, timeout=20.0) as db:
-        # Ensure user_stats row exists
         await db.execute("INSERT OR IGNORE INTO user_stats (user_id) VALUES (?)", (user_id,))
         
         if won:
-            # User won: net_result is profit
             await db.execute("""
                 UPDATE user_stats SET 
                     total_wagered = total_wagered + ?,
@@ -191,7 +193,6 @@ async def record_game(user_id, wagered, net_result, won: bool):
                     games_won = games_won + 1
                 WHERE user_id = ?
             """, (wagered, net_result, user_id))
-            # Casino lost this amount
             await db.execute("""
                 UPDATE casino_stats SET
                     total_wagered = total_wagered + ?,
@@ -201,7 +202,6 @@ async def record_game(user_id, wagered, net_result, won: bool):
                 WHERE id = 1
             """, (wagered, net_result))
         else:
-            # User lost: net_result is the loss amount (positive number)
             loss = abs(net_result)
             await db.execute("""
                 UPDATE user_stats SET
@@ -211,7 +211,6 @@ async def record_game(user_id, wagered, net_result, won: bool):
                     games_lost = games_lost + 1
                 WHERE user_id = ?
             """, (wagered, loss, user_id))
-            # Casino won this amount
             await db.execute("""
                 UPDATE casino_stats SET
                     total_wagered = total_wagered + ?,
@@ -254,7 +253,6 @@ async def get_casino_stats():
             }
 
 async def set_casino_stat(field, value):
-    """Set a specific casino stat field. Field must be one of the valid column names."""
     valid_fields = ["total_wagered", "total_won", "total_lost", "games_played", "games_won", "games_lost"]
     if field not in valid_fields:
         return False
@@ -309,3 +307,53 @@ async def clear_all_tickets():
     async with aiosqlite.connect(DB_NAME, timeout=20.0) as db:
         await db.execute("DELETE FROM lottery_tickets")
         await db.commit()
+
+# ─── Cashout Functions ───
+
+async def create_cashout_request(user_id: int, prism_username: str, amount: int) -> int:
+    """Create a cashout request and return its ID."""
+    async with aiosqlite.connect(DB_NAME, timeout=20.0) as db:
+        cursor = await db.execute(
+            "INSERT INTO cashout_requests (user_id, prism_username, amount) VALUES (?, ?, ?)",
+            (user_id, prism_username, amount)
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+async def get_cashout_request(cashout_id: int):
+    """Get a cashout request by ID. Returns dict or None."""
+    async with aiosqlite.connect(DB_NAME, timeout=20.0) as db:
+        async with db.execute(
+            "SELECT id, user_id, prism_username, amount, status, message_id, channel_id FROM cashout_requests WHERE id = ?",
+            (cashout_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            if not row:
+                return None
+            return {
+                "id": row[0], "user_id": row[1], "prism_username": row[2],
+                "amount": row[3], "status": row[4], "message_id": row[5], "channel_id": row[6]
+            }
+
+async def update_cashout_status(cashout_id: int, status: str):
+    """Update cashout status to 'approved' or 'denied'."""
+    async with aiosqlite.connect(DB_NAME, timeout=20.0) as db:
+        await db.execute("UPDATE cashout_requests SET status = ? WHERE id = ?", (status, cashout_id))
+        await db.commit()
+
+async def update_cashout_message(cashout_id: int, message_id: int, channel_id: int):
+    """Store the message/channel ID for the cashout notification."""
+    async with aiosqlite.connect(DB_NAME, timeout=20.0) as db:
+        await db.execute(
+            "UPDATE cashout_requests SET message_id = ?, channel_id = ? WHERE id = ?",
+            (message_id, channel_id, cashout_id)
+        )
+        await db.commit()
+
+async def get_pending_cashouts():
+    """Get all pending cashout requests."""
+    async with aiosqlite.connect(DB_NAME, timeout=20.0) as db:
+        async with db.execute(
+            "SELECT id, user_id, prism_username, amount FROM cashout_requests WHERE status = 'pending' ORDER BY id"
+        ) as cursor:
+            return await cursor.fetchall()

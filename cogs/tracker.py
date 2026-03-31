@@ -9,7 +9,7 @@ from database import update_balance
 from cogs.linker import get_linked_users
 from logger import log_event
 
-API_URL = "https://rugplay.com/api/transactions?type=TRANSFER_IN"
+API_URL = "https://xprismplay.dpdns.org/api/transactions?type=TRANSFER_IN"
 TRACKED_FILE = "tracked_tx.json"
 CUTOFF_DATE = datetime.datetime.fromisoformat("2026-03-27T22:49:40.440Z".replace('Z', '+00:00'))
 
@@ -70,7 +70,7 @@ class Tracker(commands.Cog):
             transactions = data.get("transactions", data.get("data", []))
 
             linked = get_linked_users()
-            username_to_discord = {v["rugplay_username"].lower(): k for k, v in linked.items()}
+            username_to_discord = {v["prism_username"].lower(): k for k, v in linked.items()}
 
             new_txs = False
             for tx in transactions:

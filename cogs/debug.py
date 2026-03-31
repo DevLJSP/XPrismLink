@@ -7,7 +7,7 @@ from logger import log_event, get_logs, save_config, get_config
 import os
 import aiohttp
 
-ADMIN_ID = 1284967683246264443
+ADMIN_ID = 1384301389047660574
 
 class Debug(commands.Cog):
     def __init__(self, bot):
@@ -17,7 +17,7 @@ class Debug(commands.Cog):
         return interaction.user.id == ADMIN_ID
 
     def _resolve_target(self, target: str):
-        """Resolve a target string (mention, Discord ID, or Rugplay username) to a Discord ID string."""
+        """Resolve a target string (mention, Discord ID, or Prism username) to a Discord ID string."""
         target = target.strip()
         discord_id = None
         
@@ -33,7 +33,7 @@ class Debug(commands.Cog):
             linked = get_linked_users()
             target_lower = target.lower()
             for did, info in linked.items():
-                if info.get("rugplay_username", "").lower() == target_lower:
+                if info.get("prism_username", "").lower() == target_lower:
                     discord_id = str(did)
                     break
         
@@ -42,7 +42,7 @@ class Debug(commands.Cog):
     @app_commands.command(name="admin", description="Admin toolkit")
     @app_commands.describe(
         action="Action to perform",
-        target="User Discord ID or Rugplay Username (for ban/balance/cashout)",
+        target="User Discord ID, Prism Username, or Cashout ID (for approve/deny)",
         amount="Amount (for balance/cashout/setstats)",
         channel="Channel (for logchannel/cashoutchannel)",
         session="Session cookie (for cookies)",
@@ -51,7 +51,9 @@ class Debug(commands.Cog):
         state="True/False (for debug)"
     )
     @app_commands.choices(action=[
-        app_commands.Choice(name="Balance Manager", value="balance"),
+        app_commands.Choice(name="Balance Set", value="bal_set"),
+        app_commands.Choice(name="Balance Add", value="bal_add"),
+        app_commands.Choice(name="Balance Remove", value="bal_remove"),
         app_commands.Choice(name="Debug Mode", value="debug"),
         app_commands.Choice(name="View Logs", value="logs"),
         app_commands.Choice(name="Set Log Channel", value="logchannel"),
@@ -59,12 +61,16 @@ class Debug(commands.Cog):
         app_commands.Choice(name="Unban User", value="unban"),
         app_commands.Choice(name="Update Cookies", value="cookies"),
         app_commands.Choice(name="Force Cashout", value="cashout"),
+        app_commands.Choice(name="Cashout Approve", value="cashout_approve"),
+        app_commands.Choice(name="Cashout Deny", value="cashout_deny"),
+        app_commands.Choice(name="Cashout Pending", value="cashout_pending"),
         app_commands.Choice(name="Set Cashout Channel", value="cashoutchannel"),
         app_commands.Choice(name="Casino Stats", value="stats"),
         app_commands.Choice(name="Set Casino Stats", value="setstats"),
         app_commands.Choice(name="Lottery Start", value="l_start"),
         app_commands.Choice(name="Lottery Draw", value="l_draw"),
-        app_commands.Choice(name="Lottery Rig Draw", value="l_rig")
+        app_commands.Choice(name="Lottery Rig Draw", value="l_rig"),
+        app_commands.Choice(name="Sync Server", value="sync")
     ])
     async def admin(self, interaction: discord.Interaction, action: app_commands.Choice[str], 
                     target: str = None, 
@@ -81,7 +87,24 @@ class Debug(commands.Cog):
 
         cmd = action.value
         
-        if cmd == "debug":
+        if cmd == "sync":
+            if target is None:
+                await interaction.response.send_message("❌ | Missing 'target' Server ID.", ephemeral=True)
+                return
+            try:
+                await interaction.response.defer(ephemeral=True)
+                guild_id = int(target.strip())
+                guild = discord.Object(id=guild_id)
+                self.bot.tree.copy_global_to(guild=guild)
+                await self.bot.tree.sync(guild=guild)
+                await interaction.followup.send(f"✅ | Commands forcefully synced instantly to Server `{guild_id}`!", ephemeral=True)
+            except Exception as e:
+                try:
+                    await interaction.followup.send(f"❌ | Failed to sync to that server: `{e}`", ephemeral=True)
+                except:
+                    await interaction.response.send_message(f"❌ | Failed to sync to that server: `{e}`", ephemeral=True)
+
+        elif cmd == "debug":
             if game is None or state is None:
                 await interaction.response.send_message("❌ | Missing 'game' or 'state' parameters.", ephemeral=True)
                 return
@@ -105,7 +128,7 @@ class Debug(commands.Cog):
             else:
                 await interaction.response.send_message("❌ | Invalid game.", ephemeral=True)
 
-        elif cmd == "balance":
+        elif cmd in ("bal_set", "bal_add", "bal_remove"):
             if target is None or amount is None:
                 await interaction.response.send_message("❌ | Missing 'target' or 'amount'.", ephemeral=True)
                 return
@@ -115,9 +138,19 @@ class Debug(commands.Cog):
                 await interaction.response.send_message(f"❌ | Could not find a linked user matching '{target}'.", ephemeral=True)
                 return
                 
-            await set_balance(int(discord_id), amount)
-            await interaction.response.send_message(f"✅ | Set balance to **${amount}** for user {discord_id}.", ephemeral=True)
-            await log_event(self.bot, f"Admin set balance for {discord_id} to ${amount}")
+            from database import set_balance, update_balance
+            if cmd == "bal_set":
+                await set_balance(int(discord_id), amount)
+                await interaction.response.send_message(f"✅ | Set balance to **${amount}** for user {discord_id}.", ephemeral=True)
+                await log_event(self.bot, f"Admin set balance for {discord_id} to ${amount}")
+            elif cmd == "bal_add":
+                await update_balance(int(discord_id), amount)
+                await interaction.response.send_message(f"✅ | Added **${amount}** to user {discord_id}'s balance.", ephemeral=True)
+                await log_event(self.bot, f"Admin added ${amount} to {discord_id}'s balance")
+            elif cmd == "bal_remove":
+                await update_balance(int(discord_id), -amount)
+                await interaction.response.send_message(f"✅ | Removed **${amount}** from user {discord_id}'s balance.", ephemeral=True)
+                await log_event(self.bot, f"Admin removed ${amount} from {discord_id}'s balance")
 
         elif cmd == "logs":
             logs = get_logs()
@@ -193,7 +226,6 @@ class Debug(commands.Cog):
                     "__Secure-better-auth.session_token": session,
                     "cf_clearance": clearance
                 }
-            # Also update cashout cog cookies
             cashout_cog = self.bot.get_cog("Cashout")
             if cashout_cog:
                 cashout_cog.session_cookie = session
@@ -209,7 +241,6 @@ class Debug(commands.Cog):
                 await interaction.response.send_message(f"⚠️ | Updated memory, but failed to save to .env: {e}", ephemeral=True)
 
         elif cmd == "cashout":
-            # Force cashout: admin forces a cashout for a user
             if target is None or amount is None:
                 await interaction.response.send_message("❌ | Missing 'target' or 'amount'.", ephemeral=True)
                 return
@@ -222,29 +253,58 @@ class Debug(commands.Cog):
             linked = get_linked_users()
             user_data = linked.get(discord_id)
             if not user_data:
-                await interaction.response.send_message(f"❌ | User {discord_id} is not linked to a Rugplay account.", ephemeral=True)
+                await interaction.response.send_message(f"❌ | User {discord_id} is not linked to a Prism account.", ephemeral=True)
                 return
             
-            rugplay_username = user_data["rugplay_username"]
+            prism_username = user_data["prism_username"]
             
             await interaction.response.defer(ephemeral=True)
             
-            # Deduct balance via atomic transaction
             from database import deduct_balance_if_sufficient
             if not await deduct_balance_if_sufficient(int(discord_id), amount):
                 await interaction.followup.send(f"❌ | User does not have enough balance to cash out **${amount}**.", ephemeral=True)
                 return
             
-            # Call Rugplay transfer API
-            success = await self._do_transfer(rugplay_username, amount)
+            success = await self._do_transfer(prism_username, amount)
             
             if success:
-                await interaction.followup.send(f"✅ | Force cashout: Sent **${amount}** to **{rugplay_username}** on Rugplay.", ephemeral=True)
-                await log_event(self.bot, f"Admin force-cashout: ${amount} to {rugplay_username} (Discord: {discord_id})")
+                await interaction.followup.send(f"✅ | Force cashout: Sent **${amount}** to **{prism_username}** on XPrism.", ephemeral=True)
+                await log_event(self.bot, f"Admin force-cashout: ${amount} to {prism_username} (Discord: {discord_id})")
             else:
-                # Refund on failure
                 await update_balance(int(discord_id), amount)
                 await interaction.followup.send(f"❌ | Transfer API failed! Balance refunded. Check cookies.", ephemeral=True)
+
+        elif cmd in ("cashout_approve", "cashout_deny"):
+            if target is None:
+                await interaction.response.send_message("❌ | Missing 'target' (Cashout ID number).", ephemeral=True)
+                return
+            try:
+                cashout_id = int(target.strip())
+            except ValueError:
+                await interaction.response.send_message("❌ | Target must be a cashout ID number (e.g. `5`).", ephemeral=True)
+                return
+            
+            await interaction.response.defer(ephemeral=True)
+            from cogs.cashout import process_cashout_action
+            action_type = "approve" if cmd == "cashout_approve" else "deny"
+            success, message = await process_cashout_action(self.bot, cashout_id, action_type)
+            await interaction.followup.send(message, ephemeral=True)
+
+        elif cmd == "cashout_pending":
+            from database import get_pending_cashouts
+            pending = await get_pending_cashouts()
+            if not pending:
+                await interaction.response.send_message("✅ | No pending cashout requests.", ephemeral=True)
+                return
+            lines = []
+            for row in pending:
+                cid, uid, prism_user, amt = row
+                lines.append(f"**#{cid}** — <@{uid}> → `{prism_user}` — **${amt:,}**")
+            desc = "\n".join(lines)
+            if len(desc) > 1900:
+                desc = desc[:1900] + "\n..."
+            embed = discord.Embed(title="⏳ Pending Cashouts", description=desc, color=discord.Color.orange())
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
         elif cmd == "cashoutchannel":
             if channel is None:
@@ -277,7 +337,6 @@ class Debug(commands.Cog):
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
         elif cmd == "setstats":
-            # game param is used as the stat field name here
             if game is None or amount is None:
                 await interaction.response.send_message(
                     "❌ | Missing parameters.\n"
@@ -309,7 +368,6 @@ class Debug(commands.Cog):
                 await interaction.response.send_message("❌ | A lottery is already active! Draw it first.", ephemeral=True)
                 return
             
-            # Ticket is 1/5000 of starting fund
             ticket_price = max(1, amount // 5000)
             await start_lottery(amount, ticket_price)
             await interaction.response.send_message(f"✅ | Lottery started with **${amount:,}** pool! Ticket price: **${ticket_price:,}**.", ephemeral=False)
@@ -340,10 +398,8 @@ class Debug(commands.Cog):
 
             winning_set = set(winning_numbers)
 
-            # Draw animation
             embed = discord.Embed(title="🎟️ Lottery Draw", color=discord.Color.blue())
             embed.description = "🎰 **Initializing Lottery Machine...**\n*The suspense is building!*"
-            # Send non-ephemerally
             await interaction.response.send_message(embed=embed, ephemeral=False)
             
             drawn_str = ""
@@ -368,7 +424,6 @@ class Debug(commands.Cog):
             
             pool = active["current_pool"]
             
-            # Marginal bot cut deduction
             bot_cut = 0
             remaining = pool
             if remaining > 10000000:
@@ -390,7 +445,6 @@ class Debug(commands.Cog):
                 if t_set == winning_set:
                     winners.append(user_id)
             
-            # Delete all tickets
             await clear_all_tickets()
             
             win_str = f"**Winning Numbers:** `{' '.join(map(str, winning_numbers))}`\n\n"
@@ -399,12 +453,10 @@ class Debug(commands.Cog):
                 per_winner = net_pool // len(winners)
                 for w in winners:
                     await update_balance(w, per_winner)
-                # End lottery since someone won
                 await end_lottery_active()
                 win_str += f"🎉 **{len(winners)} Winner(s)!** They each won **${per_winner:,}**!\nBot took `${bot_cut:,}`."
                 await log_event(self.bot, f"Lottery Draw: WON by {len(winners)}. Payout ${per_winner} each. Bot Cut: ${bot_cut}")
             else:
-                # No winners, rolls over
                 win_str += f"😢 **No Winners!** The pool of **${pool:,}** rolls over to the next draw!"
                 await log_event(self.bot, f"Lottery Draw: No Winners. Rollover pool: ${pool}")
                 
@@ -416,11 +468,10 @@ class Debug(commands.Cog):
                 pass
 
     async def _do_transfer(self, recipient_username: str, amount: int) -> bool:
-        """Call the Rugplay transfer API to send cash from @crackhead to a user."""
+        """Call the XPrism transfer API to send cash."""
         session_cookie = os.getenv("COOKIE_SESSION", "")
         clearance_cookie = os.getenv("COOKIE_CLEARANCE", "")
         
-        # Try to get live cookies from tracker cog first
         tracker = self.bot.get_cog("Tracker")
         if tracker:
             session_cookie = tracker.session_cookie
@@ -436,12 +487,12 @@ class Debug(commands.Cog):
             "Accept": "*/*",
             "Accept-Language": "en-US,en;q=0.5",
             "Content-Type": "application/json",
-            "Alt-Used": "rugplay.com",
+            "Alt-Used": "xprismplay.dpdns.org",
             "Sec-Fetch-Dest": "empty",
             "Sec-Fetch-Mode": "cors",
             "Sec-Fetch-Site": "same-origin",
-            "Referer": "https://rugplay.com/portfolio",
-            "Origin": "https://rugplay.com"
+            "Referer": "https://xprismplay.dpdns.org/portfolio",
+            "Origin": "https://xprismplay.dpdns.org"
         }
         
         payload = {
@@ -452,7 +503,7 @@ class Debug(commands.Cog):
         
         try:
             async with aiohttp.ClientSession(cookies=cookies) as session:
-                async with session.post("https://rugplay.com/api/transfer", headers=headers, json=payload) as resp:
+                async with session.post("https://xprismplay.dpdns.org/api/transfer", headers=headers, json=payload) as resp:
                     if resp.status == 200:
                         return True
                     else:
