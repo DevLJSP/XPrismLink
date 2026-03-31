@@ -165,8 +165,8 @@ async def process_bet(interaction: discord.Interaction, amount: int) -> bool:
             await db.rollback()
             deposit_msg = (
                 f"❌ | You only have **${current_bal}**!"
-                f"\n\n💰 To deposit, send money to **brazil** on XPrism:"
-                f"\nhttps://xprismplay.dpdns.org/user/brazil"
+                f"\n\n💰 To deposit, send money to **xprismbank** on XPrism:"
+                f"\nhttps://xprismplay.dpdns.org/user/xprismbank"
             )
             if interaction.response.is_done():
                 await interaction.followup.send(deposit_msg, ephemeral=True)
@@ -357,3 +357,9 @@ async def get_pending_cashouts():
             "SELECT id, user_id, prism_username, amount FROM cashout_requests WHERE status = 'pending' ORDER BY id"
         ) as cursor:
             return await cursor.fetchall()
+        
+async def get_total_user_balance():
+    async with aiosqlite.connect(DB_NAME, timeout=20.0) as db:
+        async with db.execute("SELECT COALESCE(SUM(balance), 0) FROM users") as cursor:
+            row = await cursor.fetchone()
+            return int(row[0] or 0)

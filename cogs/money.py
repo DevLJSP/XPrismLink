@@ -25,7 +25,7 @@ class Money(commands.Cog):
         embed = discord.Embed(title="💰 Wallet Balance", color=discord.Color.gold())
         embed.add_field(name="User", value=target_user.mention, inline=True)
         embed.add_field(name="Balance", value=f"**${bal}**", inline=True)
-        embed.set_footer(text="To deposit, send money to brazil on XPrism.")
+        embed.set_footer(text="To deposit, send money to **xprismbank** on XPrism.")
         
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -74,7 +74,7 @@ class Money(commands.Cog):
             description += f"{medal} **{username}** - {formatted_val}\n"
             
         embed.description = description
-        embed.set_footer(text="To deposit, send money to brazil on XPrism.")
+        embed.set_footer(text="To deposit, send money to **xprismbank** on XPrism.")
         
         await interaction.response.send_message(embed=embed, ephemeral=False)
 
