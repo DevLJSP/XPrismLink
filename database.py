@@ -144,8 +144,8 @@ async def process_bet(interaction: discord.Interaction, amount: int) -> bool:
             await interaction.response.send_message(msg, ephemeral=True)
         return False
         
-    if amount > 5000:
-        msg = "❌ | The maximum bet is **$5000**."
+    if amount > 500000:
+        msg = "❌ | The maximum bet is **$500,000**."
         if interaction.response.is_done():
             await interaction.followup.send(msg, ephemeral=True)
         else:
